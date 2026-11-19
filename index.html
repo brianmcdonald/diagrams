@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagram Tool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+/* VOICE: a quiet, precise utility — paste, see, export.
+   IDEA: a drafting table: source on the left, the clean print on the right.
+   PICTURE: the live rendered diagram itself, large.
+   COLOUR and TYPE: white ground, ink #101418, warm yellow #ffd84a only on the export actions; Manrope + JetBrains Mono.
+   LAYOUT: two equal panes above 900px, stacked editor → preview → actions below; variables tucked in a collapsed drawer. */
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#101418);--ink:light-dark(#101418,#e9edf1);--muted:light-dark(#5b6670,#9aa5af);--line:light-dark(#dde2e7,#2a323a);--panel:light-dark(#f6f8fa,#161c22);--accent:#ffd84a;--err:light-dark(#b3261e,#ff8a80)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Manrope,system-ui,sans-serif;overflow-x:clip}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;padding:22px max(4vw,16px) 14px;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:32px;line-height:1.05;font-weight:700}
+header p{margin:0;color:var(--muted)}
+header a{color:inherit}
+main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);min-height:calc(100vh - 140px)}
+.pane{display:flex;flex-direction:column;padding:16px max(2vw,16px);gap:10px}
+.pane+.pane{border-left:1px solid var(--line)}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.bar .grow{flex:1}
+.h{font-weight:700;font-size:14px}
+textarea{flex:1;min-height:340px;width:100%;resize:vertical;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:14px/1.6 "JetBrains Mono",ui-monospace,monospace;tab-size:4}
+textarea:focus,select:focus,input:focus,button:focus-visible,summary:focus-visible{outline:2px solid #3b82f6;outline-offset:1px}
+select,input[type=text]{min-height:40px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;font-size:16px}
+#name{width:10em}
+button{min-height:44px;padding:0 16px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;font-weight:700;cursor:pointer;white-space:nowrap}
+button:hover{background:var(--panel)}
+button.primary{background:var(--accent);border-color:#e6bf2e;color:#101418}
+button.primary:hover{background:#ffe172}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.small{min-height:36px;padding:0 12px;font-size:14px}
+.lbl{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--muted);min-height:44px}
+.lbl input[type=checkbox]{width:18px;height:18px}
+.split{display:inline-flex}.split button{border-radius:8px 0 0 8px}.split select{border-radius:0 8px 8px 0;border-left:0;min-height:44px;background:var(--accent);border-color:#e6bf2e;color:#101418;font-weight:700}
+#stage{position:relative;flex:1;min-height:340px;border:1px solid var(--line);border-radius:8px;overflow:auto;display:grid;place-items:center;padding:20px;
+  background-color:var(--panel);background-image:linear-gradient(45deg,var(--line) 25%,transparent 25%,transparent 75%,var(--line) 75%),linear-gradient(45deg,var(--line) 25%,transparent 25%,transparent 75%,var(--line) 75%);background-size:16px 16px;background-position:0 0,8px 8px}
+#stage.solid{background-image:none}
+#stage svg{max-width:100%;height:auto}
+#stage.dim svg{opacity:.35}
+#empty{color:var(--muted);text-align:center}
+#msg{min-height:1.4em;font-size:14px;color:var(--muted)}
+#msg.err{color:var(--err);white-space:pre-wrap;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:13px}
+kbd{font:12px "JetBrains Mono",monospace;padding:1px 5px;border:1px solid var(--line);border-radius:4px}
+details{border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+summary{cursor:pointer;padding:10px 14px;font-weight:700;font-size:14px;min-height:44px;display:flex;align-items:center;gap:8px;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"";width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s}
+details[open] summary::before{transform:rotate(45deg)}
+#count{font-weight:500;color:var(--muted)}
+.vars{padding:0 14px 14px;display:grid;gap:14px}
+.vars h3{margin:0 0 6px;font-size:13px;font-weight:700;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 14px}
+.row{display:grid;grid-template-columns:36px minmax(0,1fr) 30px;align-items:center;gap:8px}
+.row.nocolor{grid-template-columns:minmax(0,1fr) 30px}
+.row label{display:block;font-size:13px;line-height:1.25}
+.row label code{display:block;font:12px "JetBrains Mono",monospace;color:var(--muted)}
+.row.set label{font-weight:700}
+.row.set label code{color:var(--ink)}
+.row input[type=color]{width:36px;height:36px;padding:2px;border:1px solid var(--line);border-radius:6px;background:var(--bg);cursor:pointer}
+.row input[type=text]{min-height:36px;width:100%;font:13px "JetBrains Mono",monospace;padding:4px 8px;margin-top:3px}
+.row input.bad{border-color:var(--err)}
+.row .x{min-height:30px;width:30px;padding:0;border:0;background:none;color:var(--muted);font-size:18px;visibility:hidden}
+.row.set .x{visibility:visible}
+.hint{margin:0;font-size:13px;color:var(--muted)}
+@media(max-width:900px){main{grid-template-columns:minmax(0,1fr)}.pane+.pane{border-left:0;border-top:1px solid var(--line)}textarea,#stage{min-height:280px}}
+@media (prefers-reduced-motion:no-preference){#stage svg{transition:opacity .2s}}
+@media (prefers-reduced-motion:reduce){summary::before{transition:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Diagram Tool</h1>
+  <p>Convert a Mermaid or Pele text diagram to a SVG or PNG image.</p>
+</header>
+<main>
+  <section class="pane">
+    <div class="bar">
+      <label class="h grow" for="src">Mermaid source</label>
+      <select id="sample" aria-label="Load an example">
+        <option value="">Load example…</option>
+        <option value="flow">Flowchart</option>
+        <option value="seq">Sequence</option>
+        <option value="state">State</option>
+        <option value="gantt">Gantt</option>
+        <option value="class">Class</option>
+        <option value="er">Entity relationship</option>
+        <option value="pie">Pie</option>
+        <option value="xy">XY chart</option>
+        <option value="mind">Mindmap</option>
+      </select>
+    </div>
+    <textarea id="src" spellcheck="false" aria-describedby="msg"></textarea>
+    <div class="bar">
+      <label class="lbl"><input type="checkbox" id="live" checked> Live preview</label>
+      <span class="grow"></span>
+      <button id="render" type="button">Render <kbd>Ctrl ↵</kbd></button>
+    </div>
+  </section>
+  <section class="pane">
+    <div class="bar">
+      <span class="h grow">Preview</span>
+      <select id="theme" aria-label="Colour theme">
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+        <option value="iom">IOM blue</option>
+        <option value="slate">Slate</option>
+        <option value="warm">Warm paper</option>
+        <option value="mono">Monochrome</option>
+      </select>
+      <select id="font" aria-label="Font">
+        <option value="sans-serif">Sans-serif</option>
+        <option value="Arial, Helvetica, sans-serif">Arial</option>
+        <option value="Georgia, serif">Georgia</option>
+        <option value="Verdana, sans-serif">Verdana</option>
+        <option value="ui-monospace, Menlo, Consolas, monospace">Monospace</option>
+      </select>
+    </div>
+    <div id="stage" aria-live="polite"><div id="empty">Your diagram will appear here.</div></div>
+    <div id="msg" role="status"></div>
+
+    <details id="drawer">
+      <summary>Customise <span id="count"></span></summary>
+      <div class="vars">
+        <p class="hint">Values start from the selected theme. Edit any of them to override it; changing the theme clears your overrides.</p>
+        <div id="groups"></div>
+        <div class="bar">
+          <button type="button" class="small" id="resetAll">Reset all</button>
+          <button type="button" class="small" id="copyCss">Copy as CSS</button>
+        </div>
+      </div>
+    </details>
+
+    <div class="bar">
+      <label class="lbl"><input type="checkbox" id="bgon"> Include background</label>
+      <span class="grow"></span>
+      <label for="name" class="lbl">File</label>
+      <input type="text" id="name" value="diagram" spellcheck="false">
+    </div>
+    <div class="bar">
+      <span class="grow"></span>
+      <button id="copy" type="button" disabled>Copy SVG</button>
+      <span class="split">
+        <button id="png" type="button" class="primary" disabled>Export PNG</button>
+        <select id="scale" aria-label="PNG scale">
+          <option value="1">1×</option>
+          <option value="2" selected>2×</option>
+          <option value="3">3×</option>
+          <option value="4">4×</option>
+        </select>
+      </span>
+      <button id="export" type="button" class="primary" disabled>Export SVG</button>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/pele@1.13.0/dist/pele.global.js"></script>
+<script>
+{
+const $ = id => document.getElementById(id);
+const src = $('src'), stage = $('stage'), msg = $('msg');
+
+// Every variable Pele 1.13 reads, with its built-in default.
+const VARS = [
+  { group:'Colours', items:[
+    ['--pele-bg','Background','#ffffff'], ['--pele-fg','Text','#1f1f1f'], ['--pele-muted','Muted text','#6e6e6e'],
+    ['--pele-line','Lines & arrows','#1f1f1f'], ['--pele-surface','Node fill','#f3f3f3'], ['--pele-surface-alt','Alternate fill','#e6e6e6'],
+    ['--pele-border','Borders','#8a8a8a'], ['--pele-accent','Accent','#5b7bd5'], ['--pele-critical','Critical (Gantt)','#e45756'],
+    ['--pele-fg-on-dark','Text on dark fills','#ffffff'], ['--pele-fg-on-light','Text on light fills','#1f1f1f'] ]},
+  { group:'Chart series', items:[1,2,3,4,5,6,7,8].map((n,i)=>['--pele-series-'+n,'Series '+n,['#4c78a8','#f58518','#54a24b','#e45756','#72b7b2','#eeca3b','#b279a2','#9d755d'][i]]) },
+  { group:'Shape & type', items:[
+    ['--pele-radius','Corner radius','4px'], ['--pele-font-mono','Monospace font','monospace'],
+    ['--pele-title-weight','Title weight','bold'], ['--pele-heading-weight','Heading weight','bold'], ['--pele-bold-weight','Bold weight','bold'] ]}
+];
+const DEFAULTS = Object.fromEntries(VARS.flatMap(g => g.items.map(([k,,v]) => [k, v])));
+const isColor = k => DEFAULTS[k].startsWith('#');
+
+const THEMES = {
+  light: {},
+  dark:  {'--pele-bg':'#16191d','--pele-fg':'#e6e8eb','--pele-muted':'#9aa3ad','--pele-line':'#c9ced4','--pele-surface':'#23282e','--pele-surface-alt':'#2e343b','--pele-border':'#5c6670','--pele-accent':'#7c9cf0','--pele-fg-on-light':'#16191d'},
+  // IOM primary blue #0033A0 (Pantone 286 C) with its tints and shades; text kept near-black for legibility.
+  iom:   {'--pele-bg':'#ffffff','--pele-fg':'#1a1f2b','--pele-muted':'#5a6b8c','--pele-line':'#0033a0','--pele-surface':'#e6ebf6','--pele-surface-alt':'#ccd6ec','--pele-border':'#0033a0','--pele-accent':'#0033a0','--pele-critical':'#c8102e',
+          '--pele-series-1':'#0033a0','--pele-series-2':'#4c70bd','--pele-series-3':'#99add9','--pele-series-4':'#001f60','--pele-series-5':'#6e7a8a','--pele-series-6':'#b3c2e3','--pele-series-7':'#334f8f','--pele-series-8':'#c4c9d1'},
+  slate: {'--pele-bg':'#f4f6f9','--pele-fg':'#1d2733','--pele-muted':'#5e6b7a','--pele-line':'#3d4b5c','--pele-surface':'#e3e9f0','--pele-surface-alt':'#d2dbe6','--pele-border':'#7d8b9b','--pele-accent':'#2f6fb5'},
+  warm:  {'--pele-bg':'#fbf7ef','--pele-fg':'#2b2620','--pele-muted':'#756b5e','--pele-line':'#4a4036','--pele-surface':'#f1e9da','--pele-surface-alt':'#e6dbc6','--pele-border':'#a08f78','--pele-accent':'#c0612b'},
+  mono:  {'--pele-bg':'#ffffff','--pele-fg':'#000000','--pele-muted':'#555555','--pele-line':'#000000','--pele-surface':'#ffffff','--pele-surface-alt':'#eeeeee','--pele-border':'#000000','--pele-accent':'#000000','--pele-critical':'#000000',
+          '--pele-series-1':'#222222','--pele-series-2':'#555555','--pele-series-3':'#888888','--pele-series-4':'#aaaaaa','--pele-series-5':'#cccccc','--pele-series-6':'#444444','--pele-series-7':'#777777','--pele-series-8':'#999999'}
+};
+
+const SAMPLES = {
+  flow: `flowchart LR
+    A[Registration] --> B{Biometrics captured?}
+    B -- Yes --> C[1:N deduplication]
+    B -- No --> D[Manual review]
+    C --> E[(Beneficiary registry)]
+    D --> E`,
+  seq: `sequenceDiagram
+    participant App
+    participant API
+    participant DB
+    App->>API: POST /records
+    API->>DB: insert
+    DB-->>API: id
+    API-->>App: 201 Created`,
+  state: `stateDiagram-v2
+    [*] --> Draft
+    Draft --> Submitted : submit
+    Submitted --> Approved : approve
+    Submitted --> Draft : reject
+    Approved --> [*]`,
+  gantt: `gantt
+    title Project plan
+    dateFormat YYYY-MM-DD
+    section Build
+    Design       :a1, 2026-01-05, 14d
+    Development  :a2, after a1, 30d
+    section Release
+    Testing      :crit, after a2, 10d
+    Launch       :milestone, 2026-03-02, 0d`,
+  class: `classDiagram
+    class Person { +String name +register() }
+    class Household { +int size +addMember(Person) }
+    Household "1" o-- "*" Person`,
+  er: `erDiagram
+    HOUSEHOLD ||--o{ PERSON : contains
+    PERSON ||--o{ ENTITLEMENT : receives
+    PERSON { string id string name }`,
+  pie: `pie title Records by source
+    "Mobile" : 58
+    "Registration desk" : 31
+    "Import" : 11`,
+  xy: `xychart-beta
+    title "Monthly registrations"
+    x-axis [Jan, Feb, Mar, Apr, May]
+    y-axis "Records" 0 --> 500
+    bar [120, 210, 330, 290, 410]
+    line [120, 210, 330, 290, 410]`,
+  mind: `mindmap
+  root((Data system))
+    Collection
+      Mobile forms
+      Desk registration
+    Processing
+      Deduplication
+    Sharing`
+};
+
+const store = {
+  get(k){ try{ return localStorage.getItem('m2s.'+k) }catch(e){ return null } },
+  set(k,v){ try{ localStorage.setItem('m2s.'+k,v) }catch(e){} }
+};
+
+let lastSvg = '', lastSize = null, timer = 0, custom = {};
+
+function setMsg(t, err){ msg.textContent = t; msg.className = err ? 'err' : ''; }
+function setReady(ok){ for (const id of ['export','copy','png']) $(id).disabled = !ok; }
+function themeBase(){ return { ...DEFAULTS, ...THEMES[$('theme').value] }; }
+function effective(){ return { ...themeBase(), ...custom, '--pele-font': $('font').value }; }
+
+/* ---------- variables drawer ---------- */
+function toHex(v){
+  v = String(v).trim();
+  if (/^#[0-9a-f]{6}$/i.test(v)) return v.toLowerCase();
+  if (/^#[0-9a-f]{3}$/i.test(v)) return '#' + [...v.slice(1)].map(c => c + c).join('').toLowerCase();
+  return null;
+}
+function valid(k, v){
+  if (!v) return false;
+  if (isColor(k)) return CSS.supports('color', v);
+  if (k === '--pele-radius') return CSS.supports('border-radius', v);
+  if (k.endsWith('-weight')) return CSS.supports('font-weight', v);
+  return CSS.supports('font-family', v);
+}
+function buildDrawer(){
+  $('groups').innerHTML = VARS.map(g => `<div><h3>${g.group}</h3><div class="grid">${g.items.map(([k, label]) => `
+    <div class="row${isColor(k) ? '' : ' nocolor'}" data-k="${k}">
+      ${isColor(k) ? `<input type="color" aria-label="${label} colour">` : ''}
+      <label>${label}<code>${k}</code><input type="text" spellcheck="false" aria-label="${label} value"></label>
+      <button type="button" class="x" title="Reset to theme" aria-label="Reset ${label}">↺</button>
+    </div>`).join('')}</div></div>`).join('');
+}
+function syncDrawer(){
+  const base = themeBase();
+  for (const row of document.querySelectorAll('.row')) {
+    const k = row.dataset.k, v = custom[k] ?? base[k];
+    row.classList.toggle('set', k in custom);
+    const t = row.querySelector('input[type=text]');
+    if (document.activeElement !== t) { t.value = v; t.classList.remove('bad'); }
+    const c = row.querySelector('input[type=color]');
+    if (c) c.value = toHex(v) || '#000000';
+  }
+  const n = Object.keys(custom).length;
+  $('count').textContent = n ? `· ${n} customised` : '';
+}
+function setVar(k, v){
+  const base = themeBase()[k];
+  if (v === null || v === base) delete custom[k]; else custom[k] = v;
+  store.set('custom', JSON.stringify(custom));
+  applyStage(); syncDrawer();
+}
+$('groups').addEventListener('input', e => {
+  const row = e.target.closest('.row'); if (!row) return;
+  const k = row.dataset.k, v = e.target.value.trim();
+  if (e.target.type === 'color') return setVar(k, v);
+  const ok = valid(k, v);
+  e.target.classList.toggle('bad', !ok);
+  if (ok) setVar(k, v);
+});
+$('groups').addEventListener('change', e => { if (e.target.type === 'text') syncDrawer(); });
+$('groups').addEventListener('click', e => { const b = e.target.closest('.x'); if (b) setVar(b.closest('.row').dataset.k, null); });
+$('resetAll').addEventListener('click', () => { custom = {}; store.set('custom', '{}'); applyStage(); syncDrawer(); });
+$('copyCss').addEventListener('click', async () => {
+  const v = effective();
+  const css = '.pele {\n' + Object.keys(v).map(k => `  ${k}: ${v[k]};`).join('\n') + '\n}\n';
+  try { await navigator.clipboard.writeText(css); setMsg('Pele variables copied as CSS.'); }
+  catch (e) { setMsg('Clipboard is blocked here.', true); }
+});
+
+/* ---------- preview ---------- */
+function applyStage(){
+  const vars = effective();
+  for (const [k,v] of Object.entries(vars)) stage.style.setProperty(k, v);
+  stage.classList.toggle('solid', $('bgon').checked);
+  stage.style.backgroundColor = $('bgon').checked ? vars['--pele-bg'] : '';
+}
+
+function render(){
+  const code = src.value.trim();
+  store.set('src', src.value);
+  if (!code){ stage.innerHTML = '<div id="empty">Your diagram will appear here.</div>'; lastSvg=''; setReady(false); setMsg(''); return; }
+  if (!window.pele){ setMsg('The Pele library failed to load. Check your internet connection.', true); return; }
+  try {
+    const r = pele.render(code, { responsive:false, autoDirection:false, fontFamily:$('font').value, idPrefix:'m2s' });
+    stage.innerHTML = r.svg;
+    stage.classList.remove('dim');
+    lastSvg = r.svg; lastSize = { w: Math.ceil(r.width), h: Math.ceil(r.height) };
+    setReady(true);
+    setMsg(`Rendered ${r.mermaidType || r.type} · ${lastSize.w} × ${lastSize.h} px. Ready to export.`);
+  } catch (e) {
+    stage.classList.toggle('dim', !!lastSvg);
+    setReady(false);
+    const where = e && e.line ? ` (line ${e.line}${e.column ? ', column ' + e.column : ''})` : '';
+    const label = { syntax:'Syntax error', semantic:'Invalid diagram', 'unsupported-diagram':'Unsupported diagram type', limit:'Too large' }[e && e.code] || 'Error';
+    setMsg(label + where + ' — ' + String(e && e.message || e).slice(0, 600), true);
+  }
+}
+
+/* ---------- export ---------- */
+// Replace every var(--…) with a literal value so the file works in Inkscape, Illustrator, Figma and converters.
+function resolveVars(svg, vars){
+  const defs = {}, keep = [];
+  for (const decl of (svg.getAttribute('style') || '').split(';')) {
+    const i = decl.indexOf(':'); if (i < 0) continue;
+    const k = decl.slice(0, i).trim(), v = decl.slice(i + 1).trim();
+    if (k.startsWith('--')) defs[k] = v; else if (k) keep.push([k, v]);
+  }
+  const look = n => vars[n] ?? defs[n];
+  const sub = s => {
+    for (let n = 0; n < 12 && s.includes('var('); n++) {
+      s = s.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*([^()]*))?\)/g, (m, name, fb) => look(name) ?? (fb ?? '').trim());
+    }
+    return s;
+  };
+  svg.setAttribute('style', keep.map(([k, v]) => k + ':' + sub(v)).join(';'));
+  for (const el of [svg, ...svg.querySelectorAll('*')]) {
+    for (const a of [...el.attributes]) if (a.value.includes('var(')) el.setAttribute(a.name, sub(a.value));
+  }
+}
+
+function buildFile(){
+  const doc = new DOMParser().parseFromString(lastSvg, 'image/svg+xml');
+  const svg = doc.documentElement;
+  const vars = effective();
+  resolveVars(svg, vars);
+  svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  if ($('bgon').checked) {
+    const vb = (svg.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+    if (vb.length === 4 && vb.every(isFinite)) {
+      const r = doc.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r.setAttribute('x', vb[0]); r.setAttribute('y', vb[1]);
+      r.setAttribute('width', vb[2]); r.setAttribute('height', vb[3]);
+      r.setAttribute('fill', vars['--pele-bg']);
+      svg.insertBefore(r, svg.firstChild);
+    }
+  }
+  return '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' + new XMLSerializer().serializeToString(svg);
+}
+
+function baseName(){ return ($('name').value.trim() || 'diagram').replace(/[\\/:*?"<>|]+/g, '-').replace(/\.(svg|png)$/i, ''); }
+
+function download(blob, name){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  setMsg('Saved ' + name + ' (' + Math.round(blob.size / 102.4) / 10 + ' KB).');
+}
+
+$('export').addEventListener('click', () => {
+  if (lastSvg) download(new Blob([buildFile()], { type: 'image/svg+xml;charset=utf-8' }), baseName() + '.svg');
+});
+
+$('png').addEventListener('click', async () => {
+  if (!lastSvg) return;
+  const scale = +$('scale').value, { w, h } = lastSize;
+  try {
+    const img = new Image();
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(buildFile());
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    const blob = await new Promise((ok, no) => c.toBlob(b => b ? ok(b) : no(new Error('Canvas export failed')), 'image/png'));
+    download(blob, `${baseName()}${scale > 1 ? '@' + scale + 'x' : ''}.png`);
+  } catch (e) {
+    setMsg('PNG export failed — ' + (e && e.message || e), true);
+  }
+});
+
+$('copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(buildFile()); setMsg('SVG markup copied to clipboard.'); }
+  catch (e) { setMsg('Clipboard is blocked here — use Export SVG instead.', true); }
+});
+
+/* ---------- wiring ---------- */
+$('render').addEventListener('click', render);
+src.addEventListener('input', () => { if ($('live').checked){ clearTimeout(timer); timer = setTimeout(render, 200); } });
+src.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter'){ e.preventDefault(); render(); }
+  if (e.key === 'Tab' && !e.shiftKey){ e.preventDefault(); src.setRangeText('    ', src.selectionStart, src.selectionEnd, 'end'); src.dispatchEvent(new Event('input')); }
+});
+$('sample').addEventListener('change', e => { if (SAMPLES[e.target.value]){ src.value = SAMPLES[e.target.value]; render(); } e.target.value = ''; });
+$('theme').addEventListener('change', () => { store.set('theme', $('theme').value); custom = {}; store.set('custom', '{}'); applyStage(); syncDrawer(); });
+$('font').addEventListener('change', () => { store.set('font', $('font').value); applyStage(); render(); });
+$('bgon').addEventListener('change', () => { store.set('bgon', $('bgon').checked); applyStage(); });
+$('scale').addEventListener('change', () => store.set('scale', $('scale').value));
+$('name').addEventListener('change', () => store.set('name', $('name').value));
+$('drawer').addEventListener('toggle', () => store.set('drawer', $('drawer').open));
+src.addEventListener('dragover', e => e.preventDefault());
+src.addEventListener('drop', async e => {
+  const f = e.dataTransfer.files[0]; if (!f) return;
+  e.preventDefault(); src.value = await f.text();
+  $('name').value = f.name.replace(/\.[^.]+$/, ''); render();
+});
+
+// restore last session
+src.value = store.get('src') ?? SAMPLES.flow;
+if (store.get('theme') && THEMES[store.get('theme')]) $('theme').value = store.get('theme');
+if (store.get('font')) $('font').value = store.get('font');
+if (store.get('bgon') !== null) $('bgon').checked = store.get('bgon') === 'true';
+if (store.get('scale')) $('scale').value = store.get('scale');
+if (store.get('name')) $('name').value = store.get('name');
+try { const c = JSON.parse(store.get('custom') || '{}'); for (const k in c) if (k in DEFAULTS) custom[k] = c[k]; } catch (e) {}
+if (store.get('drawer') === 'true') $('drawer').open = true;
+buildDrawer();
+syncDrawer();
+applyStage();
+render();
+}
+</script>
+</body>
+</html>
