@@ -20,6 +20,7 @@ header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;padding:22p
 h1{margin:0;font-size:32px;line-height:1.05;font-weight:700}
 header p{margin:0;color:var(--muted)}
 header a{color:inherit}
+header .privacy{flex-basis:100%;font-size:14px}
 main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);min-height:calc(100vh - 140px)}
 .pane{display:flex;flex-direction:column;padding:16px max(2vw,16px);gap:10px}
 .pane+.pane{border-left:1px solid var(--line)}
@@ -78,6 +79,7 @@ details[open] summary::before{transform:rotate(45deg)}
 <header>
   <h1>Diagram Tool</h1>
   <p>Convert a Mermaid or Pele text diagram to a SVG or PNG image.</p>
+  <p class="privacy">Runs only in your browser: your diagrams are never uploaded or stored elsewhere, and no analytics are collected.</p>
 </header>
 <main>
   <section class="pane">

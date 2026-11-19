@@ -2,6 +2,8 @@
 
 A single-page, browser-only tool that turns a [Mermaid](https://mermaid.js.org/)-syntax text diagram into a clean SVG or PNG image. Rendering is done by [Pele](https://www.npmjs.com/package/pele) (loaded from jsDelivr). There is no build step and no server.
 
+**Privacy:** the tool runs only in your browser. Your diagrams are never uploaded or stored anywhere else, and the tool collects no analytics.
+
 ## Usage
 
 Open `index.html` in a browser, or serve the folder with any static server:
